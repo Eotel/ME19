@@ -82,4 +82,5 @@ zbar/lib/*.so
 *.test
 *.out
 go.work
+mise.toml
 
