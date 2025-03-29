@@ -58,3 +58,28 @@ Temporary Items
 
 # Generated files
 code.txt
+
+# Large binary dependencies
+opencv/lib/*.lib
+opencv/lib/*.dll
+opencv/lib/*.a
+opencv/lib/*.so
+zbar/lib/*.lib
+zbar/lib/*.dll
+zbar/lib/*.a
+zbar/lib/*.so
+
+# Keep include headers
+!opencv/include/**
+!zbar/include/**
+
+# Go specifics
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+

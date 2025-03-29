@@ -1,0 +1,14 @@
+{
+  "camera": {
+    "device_id": 0,
+    "width": 1280,
+    "height": 720,
+    "fps": 30
+  },
+  "qrcode": {
+    "scan_interval_ms": 500
+  },
+  "output_file": {
+    "file_path": "code.txt"
+  }
+}
