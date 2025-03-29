@@ -82,6 +82,7 @@ func TestDetector_Detect(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to close detector: %v", err)
 	}
+
 }
 
 // TestDetector_Close は Close メソッドのテスト
@@ -105,7 +106,8 @@ func TestDetector_Close(t *testing.T) {
 
 // TestDetector_DetectMultiple は DetectMultiple メソッドのテスト
 func TestDetector_DetectMultiple(t *testing.T) {
-	// テスト用のQRコード画像を準備
+	// 現時点では複数QRコードの検出はシンプルな実装なので、
+	// 単一QRコード画像でテストします
 	_, testImagePath := getTestImagesPaths()
 
 	// 画像ファイルの読み込み
