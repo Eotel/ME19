@@ -6,6 +6,8 @@ import (
 	"image"
 	"image/jpeg"
 	"image/png"
+	_ "image/jpeg" // Register JPEG format
+	_ "image/png"  // Register PNG format
 
 	"github.com/makiuchi-d/gozxing"
 	"github.com/makiuchi-d/gozxing/qrcode"
@@ -13,28 +15,28 @@ import (
 
 // Detector is responsible for detecting and decoding QR codes from images
 type Detector struct {
-	// 設定オプション
+	// IsInitialized indicates whether the detector has been properly initialized
 	IsInitialized bool
-	reader        gozxing.Reader
+	qrReader     gozxing.Reader
 }
 
 // New creates a new QR code detector
 func New() *Detector {
 	return &Detector{
 		IsInitialized: false,
-		reader:        nil,
+		qrReader:     nil,
 	}
 }
 
 // Initialize sets up the QR code detector
 func (d *Detector) Initialize() error {
 	// QRコードリーダーのインスタンスを作成
-	d.reader = qrcode.NewQRCodeReader()
+	d.qrReader = qrcode.NewQRCodeReader()
 	d.IsInitialized = true
 	return nil
 }
 
-// Detect finds and decodes QR codes in the provided image data
+// Detect finds and decodes a single QR code in the provided image data
 func (d *Detector) Detect(imageData []byte) ([]string, error) {
 	if !d.IsInitialized {
 		return nil, errors.New("QR code detector is not initialized")
@@ -43,26 +45,24 @@ func (d *Detector) Detect(imageData []byte) ([]string, error) {
 	// バイトデータから画像を解析
 	img, _, err := image.Decode(bytes.NewReader(imageData))
 	if err != nil {
-		return nil, errors.New("failed to decode image data: " + err.Error())
+		return nil, err
 	}
 
 	// gozxingのBinaryBitmapに変換
 	bmp, err := gozxing.NewBinaryBitmapFromImage(img)
 	if err != nil {
-		return nil, errors.New("failed to convert image to bitmap: " + err.Error())
+		return nil, err
 	}
 
 	// QRコードの検出と読み取り
-	result, err := d.reader.Decode(bmp, nil)
+	result, err := d.qrReader.Decode(bmp, nil)
 	if err != nil {
 		// QRコードが検出されなかった場合は空のリストを返す（エラーではない）
 		return []string{}, nil
 	}
 
 	// 検出結果をリストに追加
-	results := []string{result.GetText()}
-
-	return results, nil
+	return []string{result.GetText()}, nil
 }
 
 // DetectMultiple finds and decodes multiple QR codes in the provided image data
@@ -71,39 +71,18 @@ func (d *Detector) DetectMultiple(imageData []byte) ([]string, error) {
 		return nil, errors.New("QR code detector is not initialized")
 	}
 
-	// バイトデータから画像を解析
-	img, _, err := image.Decode(bytes.NewReader(imageData))
-	if err != nil {
-		return nil, errors.New("failed to decode image data: " + err.Error())
-	}
-
-	// gozxingのBinaryBitmapに変換
-	bmp, err := gozxing.NewBinaryBitmapFromImage(img)
-	if err != nil {
-		return nil, errors.New("failed to convert image to bitmap: " + err.Error())
-	}
-
-	// 複数のQRコードを検出するためのマルチフォーマットリーダーを使用
-	multiFormatReader := qrcode.NewQRCodeReader()
-	// 結果を格納するスライス
-	var results []string
-
-	// 画像全体をスキャン（簡易的な実装 - 実際の複数QRコード検出にはもっと複雑なアルゴリズムが必要かもしれません）
-	// 注：gozxingは直接複数のQRコードをサポートしていないため、このメソッドは完全な実装ではありません
-	result, err := multiFormatReader.Decode(bmp, nil)
-	if err == nil {
-		// 少なくとも1つのQRコードが見つかった場合
-		results = append(results, result.GetText())
-	}
-
-	return results, nil
+	// 単一QRコード検出の結果を配列に格納して返す簡易実装
+	// 将来的に複数QRコード検出に拡張予定
+	// 現在はDetect()メソッドの結果をそのまま返す
+	return d.Detect(imageData)
 }
 
 // Close releases resources used by the detector
 func (d *Detector) Close() error {
-	// 特に解放する必要のあるリソースがない場合は、簡単な状態リセットのみを行う
+	// このシンプルな実装では特別なリソース解放は必要ないが、
+	// 将来的な拡張性のためにメソッドを提供しています
+	d.qrReader = nil
 	d.IsInitialized = false
-	d.reader = nil
 	return nil
 }
 
