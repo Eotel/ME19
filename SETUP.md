@@ -5,8 +5,26 @@ This document provides instructions for setting up the ME19 project environment.
 ## Prerequisites
 
 ### Go Installation
-- Install Go 1.18 or later
+- Install Go 1.18 or later (this project uses Go 1.24.1)
 - Set up GOPATH and GOROOT environment variables
+- For version management, we recommend using mise:
+  ```bash
+  # Install mise
+  curl https://mise.run | sh
+  
+  # Add mise to your shell profile for persistent activation
+  echo 'eval "$(mise activate bash)"' >> ~/.bashrc
+  source ~/.bashrc
+  
+  # Configure Go version in mise.toml
+  cat > mise.toml << EOF
+  [tools]
+  go = "latest"
+  EOF
+  
+  # Activate mise in current shell
+  eval "$(mise activate bash)"
+  ```
 
 ### OpenCV Installation
 
@@ -78,7 +96,39 @@ sudo ldconfig
 
 # Verify installation
 pkg-config --modversion opencv4
+pkg-config --cflags --libs opencv4
 ```
+
+### Installing GoCV
+
+After installing OpenCV, you need to install GoCV:
+
+```bash
+# Install GoCV
+go install gocv.io/x/gocv@latest
+
+# Navigate to the GoCV package directory
+cd $GOPATH/src/gocv.io/x/gocv
+
+# If the directory doesn't exist, find it using:
+cd $(go env GOPATH)/pkg/mod/gocv.io/x/gocv@v0.41.0  # Use the version you installed
+
+# Install GoCV with OpenCV
+make install
+
+# Verify installation
+# You should see output showing the GoCV version and OpenCV lib version
+```
+
+**Important Note**: Ensure that Go is available in your PATH before running `make install`. If you're using mise for Go version management, make sure mise is activated in your shell profile:
+
+```bash
+# Add to ~/.bashrc or ~/.zshrc
+echo 'eval "$(mise activate bash)"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+This ensures that the `go` command is available globally, which is required by the GoCV Makefile during installation.
 
 ## Project Setup
 
@@ -93,7 +143,17 @@ cd ME19
 go mod download
 ```
 
-3. Run tests to verify setup:
+3. Verify OpenCV and GoCV installation:
+```bash
+# Verify OpenCV installation
+pkg-config --modversion opencv4
+pkg-config --cflags --libs opencv4
+
+# Verify GoCV installation
+go run -v ./cmd/camera_test/main.go
+```
+
+4. Run tests to verify setup:
 ```bash
 go test ./...
 ```
