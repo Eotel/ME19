@@ -35,10 +35,10 @@ func HandleSignals(ctx context.Context, cancel context.CancelFunc) {
 func runCleanupFuncs() {
 	cleanupMutex.Lock()
 	defer cleanupMutex.Unlock()
-	
+
 	for i := len(cleanupFuncs) - 1; i >= 0; i-- {
 		cleanupFuncs[i]()
 	}
-	
+
 	cleanupFuncs = nil
 }

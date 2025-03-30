@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"os"
 
 	"github.com/eotel/me19/configs"
 	"github.com/eotel/me19/internal/camera"
@@ -31,13 +30,13 @@ func main() {
 		log.Printf("Warning: Failed to load config file: %v. Using default configuration.", err)
 		config = configs.DefaultConfig()
 	}
-	
+
 	configs.LoadEnvironmentVariables(&config)
 
 	// Initialize components
 	cam := camera.New()
 	detector := qrcode.New()
-	writer := fileio.New(config.OutputFile.FilePath)
+	_ = fileio.New(config.OutputFile.FilePath) // Will be used in future implementation
 
 	go signal.HandleSignals(ctx, cancel)
 
