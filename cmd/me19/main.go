@@ -106,15 +106,21 @@ func main() {
 	}
 	defer cam.Close()
 
-	// Set initial device ID
+	// カメラのデバイスIDを設定
 	cam.SetDeviceID(config.Camera.DeviceID)
 
+	// QRコード検出器を作成
 	detector := qrcode.New()
+	if err := detector.Initialize(); err != nil {
+		log.Fatalf("Failed to initialize QR code detector: %v", err)
+	}
 	defer detector.Close()
 
-	_ = fileio.New(config.OutputFile.FilePath)
+	// ファイル書き込みオブジェクトを作成して参照を保持
+	writer := fileio.New(config.OutputFile.FilePath)
+	log.Printf("QR code data will be written to: %s", config.OutputFile.FilePath)
 
-	// Check if we should run in headless mode
+	// ヘッドレスモードで実行するかどうかを確認
 	var headless bool
 	if runtime.GOOS == "darwin" {
 		headless = os.Getenv("CGO_ENABLED") == "0"
@@ -124,10 +130,10 @@ func main() {
 
 	if headless {
 		log.Println("Running in headless mode - camera preview window disabled")
-		runHeadless(ctx, cam)
+		runHeadless(ctx, cam, detector, writer)
 	} else {
 		log.Printf("Running with display enabled on %s platform", runtime.GOOS)
-		runWithDisplay(ctx, cam)
+		runWithDisplay(ctx, cam, detector, writer)
 	}
 }
 
@@ -144,11 +150,13 @@ func setupSignalHandler(cancel context.CancelFunc) {
 }
 
 // runHeadless runs the application without UI
-func runHeadless(ctx context.Context, cam *camera.Camera) {
+func runHeadless(ctx context.Context, cam *camera.Camera, detector *qrcode.Detector, writer *fileio.Writer) {
 	// Open the camera
 	if err := cam.Open(); err != nil {
 		log.Fatalf("Error opening camera: %v", err)
 	}
+
+	lastCode := "" // 前回検出したQRコードを追跡
 
 	// Just keep the camera running
 	for {
@@ -156,10 +164,36 @@ func runHeadless(ctx context.Context, cam *camera.Camera) {
 		case <-ctx.Done():
 			return
 		case <-time.After(100 * time.Millisecond):
-			// Capture frame to keep camera active but discard it
-			_, err := cam.CaptureFrame()
+			// フレームを取得
+			frame, err := cam.CaptureFrame()
 			if err != nil {
 				log.Printf("Error capturing frame: %v", err)
+				continue
+			}
+
+			// QRコードを検出
+			codes, err := detector.Detect(frame)
+			if err != nil {
+				log.Printf("Error detecting QR codes: %v", err)
+				continue
+			}
+
+			// 検出したQRコードをファイルに書き込み
+			processDetectedCodes(codes, writer, &lastCode)
+		}
+	}
+}
+
+// processDetectedCodes processes detected QR codes and writes new codes to file
+func processDetectedCodes(codes []string, writer *fileio.Writer, lastCode *string) {
+	for _, code := range codes {
+		// 新しいコードの場合のみファイルに書き込み
+		if code != *lastCode && code != "" {
+			if err := writer.WriteData(code); err != nil {
+				log.Printf("Error writing QR code data to file: %v", err)
+			} else {
+				log.Printf("Detected new QR code and wrote to file: %s", code)
+				*lastCode = code
 			}
 		}
 	}
@@ -190,11 +224,12 @@ func tryOpenCamera(cam *camera.Camera, deviceID int) bool {
 }
 
 // runWithDisplay runs the application with UI
-func runWithDisplay(ctx context.Context, cam *camera.Camera) {
+func runWithDisplay(ctx context.Context, cam *camera.Camera, detector *qrcode.Detector, writer *fileio.Writer) {
 	// Open the camera
 	if err := cam.Open(); err != nil {
 		log.Fatalf("Error opening camera: %v", err)
 	}
+	lastCode := "" // 前回検出したQRコードを追跡
 
 	// Create window on the main thread
 	window := gocv.NewWindow("ME19 QR Code Scanner")
@@ -229,6 +264,45 @@ func runWithDisplay(ctx context.Context, cam *camera.Camera) {
 				mat.Close()
 				time.Sleep(100 * time.Millisecond)
 				continue
+			}
+
+			// Matをバッファに変換してからQRコード検出に使用
+			// 画像をエンコードして一時ファイルに保存
+			tempFile := os.TempDir() + "/me19_frame.jpg"
+			success := gocv.IMWrite(tempFile, mat)
+			if !success {
+				log.Printf("Error saving image to temp file")
+			} else {
+				// 一時ファイルからバイトデータを読み込み
+				frameBytes, err := os.ReadFile(tempFile)
+				if err != nil {
+					log.Printf("Error reading frame from temp file: %v", err)
+				} else {
+					// QRコードを検出
+					codes, err := detector.Detect(frameBytes)
+					if err != nil {
+						// エラーが頻発するため、ログ出力は抑制
+						// log.Printf("Error detecting QR codes: %v", err)
+					} else if len(codes) > 0 {
+						// 検出したQRコードを処理
+						for _, code := range codes {
+							if code != lastCode && code != "" {
+								if err := writer.WriteData(code); err != nil {
+									log.Printf("Error writing QR code data to file: %v", err)
+								} else {
+									log.Printf("Detected new QR code and wrote to file: %s", code)
+									lastCode = code
+
+									// QRコードが検出されたことを表示
+									gocv.PutText(&mat, fmt.Sprintf("QR: %s", code), image.Point{X: 10, Y: 60}, gocv.FontHersheyPlain, 1.2, color.RGBA{R: 255, G: 0, B: 0, A: 255}, 2)
+								}
+							}
+						}
+					}
+
+					// 一時ファイルを削除（エラー処理は省略）
+					os.Remove(tempFile)
+				}
 			}
 
 			// Draw current device ID text on the frame
