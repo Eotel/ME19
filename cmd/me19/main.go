@@ -28,6 +28,13 @@ func init() {
 func main() {
 	// Parse command line flags
 	configPath := flag.String("config", "", "Path to configuration file")
+	deviceID := flag.Int("device", -1, "Camera device ID")
+	outputFile := flag.String("output", "", "Path to output file")
+
+	// 短縮形のフラグも追加
+	flag.StringVar(configPath, "c", "", "Path to configuration file (shorthand)")
+	flag.IntVar(deviceID, "d", -1, "Camera device ID (shorthand)")
+	flag.StringVar(outputFile, "o", "", "Path to output file (shorthand)")
 	flag.Parse()
 
 	fmt.Println("ME19 QR Code Scanner")
@@ -74,6 +81,18 @@ func main() {
 		}
 	}
 
+	// Override config with command line arguments if provided
+	if *deviceID >= 0 {
+		log.Printf("Overriding camera device ID from command line: %d", *deviceID)
+		config.Camera.DeviceID = *deviceID
+	}
+
+	if *outputFile != "" {
+		log.Printf("Overriding output file path from command line: %s", *outputFile)
+		config.OutputFile.FilePath = *outputFile
+	}
+
+	// Load environment variables (which override both config file and command line)
 	configs.LoadEnvironmentVariables(&config)
 
 	// Initialize components
