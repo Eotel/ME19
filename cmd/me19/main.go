@@ -75,6 +75,35 @@ func main() {
 		defer window.Close()
 	}
 
+	currentDeviceID := config.Camera.DeviceID
+	
+	switchCamera := func(newDeviceID int) {
+		if newDeviceID == currentDeviceID {
+			return
+		}
+		
+		log.Printf("Switching to camera device ID: %d", newDeviceID)
+		
+		cam.Close()
+		
+		cam = camera.New()
+		cam.SetDeviceID(newDeviceID)
+		
+		err := cam.Open()
+		if err != nil {
+			log.Printf("Error opening camera with device ID %d: %v", newDeviceID, err)
+			cam = camera.New()
+			cam.SetDeviceID(currentDeviceID)
+			err = cam.Open()
+			if err != nil {
+				log.Printf("Error reopening original camera: %v", err)
+			}
+			return
+		}
+		
+		currentDeviceID = newDeviceID
+	}
+	
 	go func() {
 		for {
 			select {
@@ -96,10 +125,15 @@ func main() {
 					}
 
 					window.IMShow(frame)
-					window.WaitKey(1)
+					
+					key := window.WaitKey(1)
+					if key >= 48 && key <= 57 { // 0-9のキー
+						newDeviceID := key - 48 // ASCII値から数値に変換
+						go switchCamera(newDeviceID)
+					}
+					
 					frame.Close()
 				}
-
 			}
 		}
 	}()
