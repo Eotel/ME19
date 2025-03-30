@@ -29,6 +29,12 @@ type QRCodeResult struct {
 	Time time.Time
 }
 
+// FrameData は処理のためのフレームデータを表す構造体
+type FrameData struct {
+	Mat  gocv.Mat
+	Time time.Time
+}
+
 func init() {
 	// Lock the main thread for proper macOS UI handling
 	runtime.LockOSThread()
@@ -170,16 +176,20 @@ func runHeadless(ctx context.Context, cam *camera.Camera, detector *qrcode.Detec
 	resultChan := make(chan QRCodeResult, 10)
 
 	// QRコード検出用のゴルーチンを起動
-	go detectQRCodesFromCamera(ctx, cam, detector, resultChan)
+	frameChannel := make(chan gocv.Mat, 5)
+	go detectQRCodesFromFrames(ctx, detector, frameChannel, resultChan)
 
 	// 最後に検出したQRコード
 	var lastCode string
 
-	// 結果処理ループ
+	// フレーム取得と結果処理ループ
 	for {
 		select {
 		case <-ctx.Done():
+			// すべての送信済みMatを閉じる
+			close(frameChannel)
 			return
+
 		case result := <-resultChan:
 			// 新しいコードであれば記録
 			if result.Code != lastCode && result.Code != "" {
@@ -190,38 +200,65 @@ func runHeadless(ctx context.Context, cam *camera.Camera, detector *qrcode.Detec
 					lastCode = result.Code
 				}
 			}
-		}
-	}
-}
 
-// detectQRCodesFromCamera は別スレッドでQRコード検出を行う
-func detectQRCodesFromCamera(ctx context.Context, cam *camera.Camera, detector *qrcode.Detector, resultChan chan<- QRCodeResult) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(50 * time.Millisecond): // 検出頻度を調整
-			// フレームを取得
+		default:
+			// メインスレッドでフレームを取得
 			mat, err := cam.CaptureFrameMat()
 			if err != nil || mat.Empty() {
 				if mat.Ptr() != nil {
 					mat.Close()
 				}
+				time.Sleep(10 * time.Millisecond)
 				continue
 			}
 
-			// フレームからQRコードを検出
-			codes, err := detectQRCodesFromMat(mat, detector)
+			// フレームを検出チャネルに送信（コピーを作成）
+			clone := mat.Clone()
+			select {
+			case frameChannel <- clone:
+				// フレームが正常に送信された
+			default:
+				// チャネルがいっぱいの場合はフレームを破棄
+				clone.Close()
+			}
+
+			// 元のMatを閉じる
 			mat.Close()
 
-			if err == nil {
-				// 検出したQRコードを結果チャネルに送信
-				for _, code := range codes {
-					if code != "" {
-						resultChan <- QRCodeResult{
-							Code: code,
-							Time: time.Now(),
-						}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+}
+
+// detectQRCodesFromFrames はMatチャネルからQRコードを検出する
+func detectQRCodesFromFrames(ctx context.Context, detector *qrcode.Detector, frameChan <-chan gocv.Mat, resultChan chan<- QRCodeResult) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+
+		case mat, ok := <-frameChan:
+			if !ok {
+				// チャネルが閉じられた
+				return
+			}
+
+			// MatからQRコードを検出
+			codes, err := detectQRCodesFromMat(mat, detector)
+
+			// 使用済みのMatは必ず閉じる
+			mat.Close()
+
+			if err != nil {
+				continue
+			}
+
+			// 検出されたQRコードを結果チャネルに送信
+			for _, code := range codes {
+				if code != "" {
+					resultChan <- QRCodeResult{
+						Code: code,
+						Time: time.Now(),
 					}
 				}
 			}
@@ -281,7 +318,13 @@ func runWithDisplay(ctx context.Context, cam *camera.Camera, detector *qrcode.De
 	// 検出されたQRコードの結果を受け取るチャネル
 	resultChan := make(chan QRCodeResult, 10)
 
-	// 現在表示すべきQRコード情報を保持する
+	// フレーム処理チャネル
+	frameChannel := make(chan gocv.Mat, 5)
+
+	// QRコード検出用のゴルーチンを起動
+	go detectQRCodesFromFrames(ctx, detector, frameChannel, resultChan)
+
+	// 現在のQRコード情報を保持する
 	type displayInfo struct {
 		code string
 		time time.Time
@@ -289,12 +332,6 @@ func runWithDisplay(ctx context.Context, cam *camera.Camera, detector *qrcode.De
 	}
 
 	currentQRCode := &displayInfo{}
-
-	// 最後に検出したコードを記録（ファイル書き込み用）
-	var lastWrittenCode string
-
-	// QRコード検出用のゴルーチンを起動
-	go detectQRCodesFromCamera(ctx, cam, detector, resultChan)
 
 	// Create window on the main thread
 	window := gocv.NewWindow("ME19 QR Code Scanner")
@@ -310,51 +347,58 @@ func runWithDisplay(ctx context.Context, cam *camera.Camera, detector *qrcode.De
 
 	fmt.Println("Window is open. Click on the window and press keys 0-9 to switch cameras")
 
-	// 検出結果を非同期で処理するゴルーチン
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case result := <-resultChan:
-				// 新しいコードであれば記録
-				if result.Code != lastWrittenCode && result.Code != "" {
-					if err := writer.WriteData(result.Code); err != nil {
-						log.Printf("Error writing QR code data to file: %v", err)
-					} else {
-						log.Printf("Detected new QR code and wrote to file: %s", result.Code)
-						lastWrittenCode = result.Code
-
-						// 表示用の情報を更新
-						currentQRCode.mu.Lock()
-						currentQRCode.code = result.Code
-						currentQRCode.time = result.Time
-						currentQRCode.mu.Unlock()
-					}
-				}
-			}
-		}
-	}()
+	// 最後に書き込んだコード
+	var lastWrittenCode string
 
 	// Main display loop
 	for {
 		select {
 		case <-ctx.Done():
+			// すべての送信済みMatを閉じる
+			close(frameChannel)
 			return
+
+		case result := <-resultChan:
+			// 新しいコードであれば記録
+			if result.Code != lastWrittenCode && result.Code != "" {
+				if err := writer.WriteData(result.Code); err != nil {
+					log.Printf("Error writing QR code data to file: %v", err)
+				} else {
+					log.Printf("Detected new QR code and wrote to file: %s", result.Code)
+					lastWrittenCode = result.Code
+
+					// 表示用の情報を更新
+					currentQRCode.mu.Lock()
+					currentQRCode.code = result.Code
+					currentQRCode.time = result.Time
+					currentQRCode.mu.Unlock()
+				}
+			}
+
 		default:
 			// Capture frame directly as Mat for display
 			mat, err := cam.CaptureFrameMat()
 			if err != nil {
 				log.Printf("Error capturing frame: %v", err)
-				time.Sleep(100 * time.Millisecond)
+				time.Sleep(10 * time.Millisecond)
 				continue
 			}
 
 			if mat.Empty() {
 				log.Println("Empty frame received")
 				mat.Close()
-				time.Sleep(100 * time.Millisecond)
+				time.Sleep(10 * time.Millisecond)
 				continue
+			}
+
+			// QRコード検出用にMatのコピーを作成
+			clone := mat.Clone()
+			select {
+			case frameChannel <- clone:
+				// フレームが正常に送信された
+			default:
+				// チャネルがいっぱいの場合はフレームを破棄
+				clone.Close()
 			}
 
 			// Draw current device ID text on the frame
@@ -424,6 +468,9 @@ func runWithDisplay(ctx context.Context, cam *camera.Camera, detector *qrcode.De
 					}
 				}
 			}
+
+			// フレームレート調整
+			time.Sleep(10 * time.Millisecond)
 		}
 	}
 }
