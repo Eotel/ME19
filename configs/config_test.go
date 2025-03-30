@@ -89,3 +89,58 @@ func TestConfigNotFound(t *testing.T) {
 		t.Errorf("デフォルト設定が返されていません")
 	}
 }
+
+func TestFindConfigFile(t *testing.T) {
+	// Create a temporary directory for testing
+	tempDir, err := os.MkdirTemp("", "config-finder-test")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Create a configs subdirectory
+	configsDir := filepath.Join(tempDir, "configs")
+	err = os.Mkdir(configsDir, 0755)
+	if err != nil {
+		t.Fatalf("Failed to create configs directory: %v", err)
+	}
+
+	// Create a test config file
+	testConfigPath := filepath.Join(configsDir, "config.json")
+	err = os.WriteFile(testConfigPath, []byte("{}"), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create test config file: %v", err)
+	}
+
+	// Save current working directory
+	originalWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get current working directory: %v", err)
+	}
+
+	// Change to the temp directory
+	err = os.Chdir(tempDir)
+	if err != nil {
+		t.Fatalf("Failed to change working directory: %v", err)
+	}
+	defer os.Chdir(originalWd) // Restore original working directory when done
+
+	// Test finding the config file
+	foundPath := FindConfigFile()
+	expectedPath := filepath.Join("configs", "config.json")
+
+	if foundPath != expectedPath && foundPath != filepath.Join(".", "configs", "config.json") {
+		t.Errorf("FindConfigFile() returned %s, want %s", foundPath, expectedPath)
+	}
+
+	// Test with no config file
+	err = os.Remove(testConfigPath)
+	if err != nil {
+		t.Fatalf("Failed to remove test config file: %v", err)
+	}
+
+	foundPath = FindConfigFile()
+	if foundPath != "" {
+		t.Errorf("FindConfigFile() returned %s, want empty string when no config exists", foundPath)
+	}
+}

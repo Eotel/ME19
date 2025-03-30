@@ -12,6 +12,11 @@ import (
 func LoadConfig(filePath string) (Config, error) {
 	config := DefaultConfig()
 
+	// First check if the file exists
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		return config, fmt.Errorf("config file not found: %s", filePath)
+	}
+
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return config, fmt.Errorf("reading config file: %w", err)

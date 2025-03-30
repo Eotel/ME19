@@ -2,6 +2,7 @@ package camera
 
 import (
 	"errors"
+	"gocv.io/x/gocv"
 )
 
 // Device defines the interface for camera operations
@@ -60,6 +61,36 @@ func NewWithBackend(backend CameraBackend) *Camera {
 	}
 }
 
+// CaptureFrameMat は直接Mat形式でフレームを取得します
+func (c *Camera) CaptureFrameMat() (gocv.Mat, error) {
+	if !c.isOpen {
+		return gocv.NewMat(), errors.New("camera is not open")
+	}
+
+	// OpenCVバックエンドへの直接アクセス
+	if backend, ok := c.backend.(*opencvBackend); ok {
+		mat := gocv.NewMat()
+		if !backend.camera.Read(&mat) || mat.Empty() {
+			mat.Close()
+			return gocv.NewMat(), errors.New("failed to read frame")
+		}
+		return mat, nil
+	}
+
+	// 他のバックエンド（モックなど）の場合は従来の方法
+	frameBytes, err := c.backend.Read()
+	if err != nil {
+		return gocv.NewMat(), err
+	}
+
+	mat, err := gocv.IMDecode(frameBytes, gocv.IMReadColor)
+	if err != nil {
+		return gocv.NewMat(), err
+	}
+
+	return mat, nil
+}
+
 // SetDeviceID sets the camera device ID to use
 func (c *Camera) SetDeviceID(id int) {
 	c.deviceID = id
@@ -107,4 +138,9 @@ func (c *Camera) CaptureFrame() ([]byte, error) {
 
 func (c *Camera) IsOpen() bool {
 	return c.isOpen
+}
+
+// GetDeviceID returns the current camera device ID
+func (c *Camera) GetDeviceID() int {
+	return c.deviceID
 }

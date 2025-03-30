@@ -88,3 +88,23 @@ func (o *opencvBackend) Read() ([]byte, error) {
 func (o *opencvBackend) IsOpened() bool {
 	return o.isOpen && o.camera != nil
 }
+
+// ReadMat は直接Matオブジェクトを返します（表示用）
+func (o *opencvBackend) ReadMat() (*gocv.Mat, error) {
+	if !o.isOpen || o.camera == nil {
+		return nil, errors.New("camera not open")
+	}
+
+	mat := gocv.NewMat()
+	if ok := o.camera.Read(&mat); !ok {
+		mat.Close()
+		return nil, errors.New("could not read from camera")
+	}
+
+	if mat.Empty() {
+		mat.Close()
+		return nil, errors.New("captured frame is empty")
+	}
+
+	return &mat, nil
+}
