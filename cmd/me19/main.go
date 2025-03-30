@@ -5,12 +5,15 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
+	"time"
 
 	"github.com/eotel/me19/configs"
 	"github.com/eotel/me19/internal/camera"
 	"github.com/eotel/me19/internal/fileio"
 	"github.com/eotel/me19/internal/qrcode"
 	"github.com/eotel/me19/internal/signal"
+	"gocv.io/x/gocv"
 )
 
 func main() {
@@ -34,7 +37,13 @@ func main() {
 	configs.LoadEnvironmentVariables(&config)
 
 	// Initialize components
-	cam := camera.New()
+	var cam *camera.Camera
+	if _, err := os.Stat("/dev/video0"); os.IsNotExist(err) {
+		cam = camera.NewWithTestBackend()
+		log.Println("Using mock camera backend for testing")
+	} else {
+		cam = camera.New()
+	}
 	detector := qrcode.New()
 	_ = fileio.New(config.OutputFile.FilePath) // Will be used in future implementation
 
@@ -50,13 +59,84 @@ func main() {
 		}
 	})
 
-	// Placeholder for camera initialization
-	fmt.Println("Camera initialization would happen here")
-	// In the future, this would be: cam.Open()
+	err = cam.Open()
+	if err != nil {
+		log.Fatalf("Error opening camera: %v", err)
+	}
 
-	// Placeholder for QR code detection
-	fmt.Println("QR code detection would happen here")
-	// In the future, this would use detector.Detect() and writer.WriteData()
+	headless := os.Getenv("DISPLAY") == ""
+	if headless {
+		log.Println("Running in headless mode - camera preview window disabled")
+	}
+
+	var window *gocv.Window
+	if !headless {
+		window = gocv.NewWindow("ME19 QR Code Scanner")
+		defer window.Close()
+	}
+
+	currentDeviceID := config.Camera.DeviceID
+	
+	switchCamera := func(newDeviceID int) {
+		if newDeviceID == currentDeviceID {
+			return
+		}
+		
+		log.Printf("Switching to camera device ID: %d", newDeviceID)
+		
+		cam.Close()
+		
+		cam = camera.New()
+		cam.SetDeviceID(newDeviceID)
+		
+		err := cam.Open()
+		if err != nil {
+			log.Printf("Error opening camera with device ID %d: %v", newDeviceID, err)
+			cam = camera.New()
+			cam.SetDeviceID(currentDeviceID)
+			err = cam.Open()
+			if err != nil {
+				log.Printf("Error reopening original camera: %v", err)
+			}
+			return
+		}
+		
+		currentDeviceID = newDeviceID
+	}
+	
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				frameBytes, err := cam.CaptureFrame()
+				if err != nil {
+					log.Printf("Error capturing frame: %v", err)
+					time.Sleep(100 * time.Millisecond)
+					continue
+				}
+
+				if !headless {
+					frame, err := gocv.IMDecode(frameBytes, gocv.IMReadColor)
+					if err != nil {
+						log.Printf("Error decoding frame: %v", err)
+						continue
+					}
+
+					window.IMShow(frame)
+					
+					key := window.WaitKey(1)
+					if key >= 48 && key <= 57 { // 0-9のキー
+						newDeviceID := key - 48 // ASCII値から数値に変換
+						go switchCamera(newDeviceID)
+					}
+					
+					frame.Close()
+				}
+			}
+		}
+	}()
 
 	<-ctx.Done()
 }

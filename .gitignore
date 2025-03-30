@@ -79,6 +79,7 @@ zbar/lib/*.so
 *.dll
 *.so
 *.dylib
+me19
 *.test
 *.out
 go.work

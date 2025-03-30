@@ -17,8 +17,8 @@ type Device interface {
 }
 
 type Camera struct {
-	deviceID int        // ID of the camera device to use (typically 0 for the first camera)
-	isOpen   bool       // Flag indicating if the camera is currently open
+	deviceID int           // ID of the camera device to use (typically 0 for the first camera)
+	isOpen   bool          // Flag indicating if the camera is currently open
 	backend  CameraBackend // The implementation that handles actual camera operations
 }
 
@@ -103,4 +103,8 @@ func (c *Camera) CaptureFrame() ([]byte, error) {
 	}
 
 	return c.backend.Read()
+}
+
+func (c *Camera) IsOpen() bool {
+	return c.isOpen
 }
