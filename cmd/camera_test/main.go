@@ -39,7 +39,7 @@ func main() {
 
 	// フレーム数カウンター
 	frameCount := 0
-	
+
 	// メインループ
 	for {
 		select {
@@ -56,7 +56,7 @@ func main() {
 				fmt.Println("フレーム取得エラー")
 				continue
 			}
-			
+
 			if img.Empty() {
 				fmt.Println("空のフレームを受信しました")
 				continue
@@ -64,10 +64,10 @@ func main() {
 
 			// フレームを表示
 			window.IMShow(img)
-			
+
 			// フレーム数をカウント
 			frameCount++
-			if frameCount % 30 == 0 {
+			if frameCount%30 == 0 {
 				fmt.Printf("フレーム数: %d\n", frameCount)
 			}
 

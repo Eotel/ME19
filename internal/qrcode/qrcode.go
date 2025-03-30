@@ -5,9 +5,9 @@ import (
 	"errors"
 	"image"
 	"image/jpeg"
-	"image/png"
 	_ "image/jpeg" // Register JPEG format
-	_ "image/png"  // Register PNG format
+	"image/png"
+	_ "image/png" // Register PNG format
 
 	"github.com/makiuchi-d/gozxing"
 	"github.com/makiuchi-d/gozxing/qrcode"
@@ -17,14 +17,14 @@ import (
 type Detector struct {
 	// IsInitialized indicates whether the detector has been properly initialized
 	IsInitialized bool
-	qrReader     gozxing.Reader
+	qrReader      gozxing.Reader
 }
 
 // New creates a new QR code detector
 func New() *Detector {
 	return &Detector{
 		IsInitialized: false,
-		qrReader:     nil,
+		qrReader:      nil,
 	}
 }
 

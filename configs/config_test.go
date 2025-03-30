@@ -66,7 +66,7 @@ func TestEnvOverride(t *testing.T) {
 	defer os.Unsetenv("ME19_OUTPUT_FILE_PATH")
 
 	config := DefaultConfig()
-	
+
 	LoadEnvironmentVariables(&config)
 
 	if config.Camera.DeviceID != 2 {
@@ -79,11 +79,11 @@ func TestEnvOverride(t *testing.T) {
 
 func TestConfigNotFound(t *testing.T) {
 	config, err := LoadConfig("/path/to/nonexistent/config.json")
-	
+
 	if err == nil {
 		t.Error("存在しないファイルでエラーが発生しませんでした")
 	}
-	
+
 	defaultConfig := DefaultConfig()
 	if config.Camera.DeviceID != defaultConfig.Camera.DeviceID {
 		t.Errorf("デフォルト設定が返されていません")
