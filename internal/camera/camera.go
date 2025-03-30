@@ -16,11 +16,10 @@ type Device interface {
 	SetDeviceID(id int)
 }
 
-// Camera represents a camera device for capturing video frames
 type Camera struct {
-	deviceID int
-	isOpen   bool
-	backend  CameraBackend
+	deviceID int        // ID of the camera device to use (typically 0 for the first camera)
+	isOpen   bool       // Flag indicating if the camera is currently open
+	backend  CameraBackend // The implementation that handles actual camera operations
 }
 
 // CameraBackend defines the interface for actual camera operations
@@ -38,7 +37,7 @@ func DefaultBackend() CameraBackend {
 	if forTesting {
 		return newMockBackend()
 	}
-	
+
 	// u30d7u30edu30c0u30afu30b7u30e7u30f3u74b0u5883u3067u306fOpenCVu30d0u30c3u30afu30a8u30f3u30c9u3092u4f7fu7528
 	return newOpenCVBackend()
 }

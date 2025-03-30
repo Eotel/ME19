@@ -1,17 +1,16 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
-	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/eotel/me19/configs"
 	"github.com/eotel/me19/internal/camera"
 	"github.com/eotel/me19/internal/fileio"
 	"github.com/eotel/me19/internal/qrcode"
+	"github.com/eotel/me19/internal/signal"
 )
 
 func main() {
@@ -22,6 +21,9 @@ func main() {
 	fmt.Println("ME19 QR Code Scanner")
 	fmt.Println("Press Ctrl+C to exit")
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// Load configuration
 	config, err := configs.LoadConfig(*configPath)
 	if err != nil {
@@ -29,19 +31,24 @@ func main() {
 		config = configs.DefaultConfig()
 	}
 
+	configs.LoadEnvironmentVariables(&config)
+
 	// Initialize components
 	cam := camera.New()
 	detector := qrcode.New()
-	writer := fileio.New(config.OutputFile.FilePath)
+	_ = fileio.New(config.OutputFile.FilePath) // Will be used in future implementation
 
-	// Avoid unused variable warnings during development
-	_ = cam
-	_ = detector
-	_ = writer
+	go signal.HandleSignals(ctx, cancel)
 
-	// Setup signal handling for graceful shutdown
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	signal.RegisterCleanupFunc(func() {
+		fmt.Println("\nShutting down...")
+		if cam != nil {
+			cam.Close()
+		}
+		if detector != nil {
+			detector.Close()
+		}
+	})
 
 	// Placeholder for camera initialization
 	fmt.Println("Camera initialization would happen here")
@@ -51,10 +58,5 @@ func main() {
 	fmt.Println("QR code detection would happen here")
 	// In the future, this would use detector.Detect() and writer.WriteData()
 
-	// Wait for termination signal
-	<-sigCh
-	fmt.Println("\nShutting down...")
-
-	// Cleanup resources
-	// In the future: cam.Close(), detector.Close(), etc.
+	<-ctx.Done()
 }
